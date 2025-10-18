@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { PlayCircle, Clock, Target } from "lucide-react";
+import { PlayCircle, Clock, Target, Brain } from "lucide-react";
 
 interface Quiz {
   id: string;
@@ -11,6 +11,7 @@ interface Quiz {
   description: string;
   difficulty: string;
   time_limit_minutes: number;
+  type: 'quiz' | 'flashcard';
   subjects: {
     name: string;
     color: string;
@@ -25,7 +26,8 @@ const QuizSection = () => {
   }, []);
 
   const fetchQuizzes = async () => {
-    const { data, error } = await supabase
+    // Fetch regular quizzes
+    const { data: quizData, error: quizError } = await supabase
       .from("quizzes")
       .select(`
         *,
@@ -36,11 +38,43 @@ const QuizSection = () => {
       `)
       .order("created_at", { ascending: false });
 
-    if (error) {
-      console.error("Error fetching quizzes:", error);
-    } else {
-      setQuizzes(data || []);
+    // Fetch flashcards and format them as quizzes
+    const { data: flashcardData, error: flashcardError } = await supabase
+      .from("flashcards")
+      .select(`
+        *,
+        subjects (
+          name,
+          color
+        )
+      `)
+      .order("created_at", { ascending: false });
+
+    if (quizError) {
+      console.error("Error fetching quizzes:", quizError);
     }
+    if (flashcardError) {
+      console.error("Error fetching flashcards:", flashcardError);
+    }
+
+    // Format flashcards as quiz items
+    const formattedFlashcards = (flashcardData || []).map(card => ({
+      id: card.id,
+      title: card.question,
+      description: "Quick answer quiz from flashcard",
+      difficulty: card.difficulty || "Medium",
+      time_limit_minutes: 2,
+      type: 'flashcard' as const,
+      subjects: card.subjects
+    }));
+
+    // Combine both arrays
+    const allQuizzes = [
+      ...(quizData || []).map(q => ({ ...q, type: 'quiz' as const })),
+      ...formattedFlashcards
+    ];
+
+    setQuizzes(allQuizzes);
   };
 
   const getDifficultyColor = (difficulty: string) => {
@@ -81,14 +115,22 @@ const QuizSection = () => {
           >
             <CardHeader>
               <div className="flex items-start justify-between mb-2">
-                <Badge 
-                  style={{ 
-                    backgroundColor: `${quiz.subjects.color}20`,
-                    color: quiz.subjects.color 
-                  }}
-                >
-                  {quiz.subjects.name}
-                </Badge>
+                <div className="flex items-center gap-2">
+                  <Badge 
+                    style={{ 
+                      backgroundColor: `${quiz.subjects.color}20`,
+                      color: quiz.subjects.color 
+                    }}
+                  >
+                    {quiz.subjects.name}
+                  </Badge>
+                  {quiz.type === 'flashcard' && (
+                    <Badge variant="outline" className="gap-1">
+                      <Brain className="h-3 w-3" />
+                      Flashcard
+                    </Badge>
+                  )}
+                </div>
                 <Badge className={getDifficultyColor(quiz.difficulty)}>
                   {quiz.difficulty}
                 </Badge>
